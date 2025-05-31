@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+const { execSync } = require('child_process');
 
 export class UserCode {
     repoName: string;
@@ -28,5 +29,14 @@ export class UserCode {
     public modifyFile(filePath: string, content: string): void {
         const fullPath = path.join(this.repoDirectory, filePath);
         fs.writeFileSync(fullPath, content, 'utf-8');
+    }
+
+    public executeCommandInRepo(command: string): string {
+        const fullPath = this.repoDirectory;
+        try {
+            return execSync(command, { cwd: fullPath, encoding: 'utf-8' });
+        } catch (error) {
+            throw new Error(`Command execution failed: ${error.message}`);
+        }
     }
 }
