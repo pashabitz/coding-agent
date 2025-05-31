@@ -1,12 +1,12 @@
 import { StructuredTool, Tool } from "@langchain/core/tools";
-import { StateGraph, END, MessagesAnnotation, Messages, START, CompiledStateGraph } from "@langchain/langgraph";
+import { StateGraph, END, MessagesAnnotation, Messages, START } from "@langchain/langgraph";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { UserCode } from "./user_code";
 import { ChatOpenAI } from "@langchain/openai";
-import { AIMessage, BaseMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
-import { StructuredToolParams, tool } from "@langchain/core/tools";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod"; 
 import dotenv from "dotenv";
+import { messageLog, responseLog } from "./logs";
 
 class ListFilesTool extends Tool {
     private userCode: UserCode;
@@ -92,29 +92,11 @@ export class CodingAgent {
         }).bindTools(this.tools);
         this.graph = this.setupStateGraph();
     }
-    private responseLog(response: AIMessage): string {
-        if (response.tool_calls && response.tool_calls.length > 0) {
-            return `Tool calls made by the model: ${JSON.stringify(response.tool_calls)}`;
-        }
-        if (response.content) {
-            return response.content.toString();
-        } else {
-            return "Model response does not contain content.";
-        }
-    }
-    private messageLog(message: BaseMessage): string {
-        if (message instanceof HumanMessage) {
-            return `User message: ${message.content}`;
-        }
-        if (message instanceof ToolMessage) {
-            return `Tool ${message.name} message: ${message.content}`;
-        }
-        return `Unknown message type: ${message.content.toString()}`;
-    }
+    
     private async callModel(state: typeof MessagesAnnotation.State) {
-        console.log(this.messageLog(state.messages[state.messages.length - 1]));
+        console.log(messageLog(state.messages[state.messages.length - 1]));
         const response = await this.model.invoke(state.messages);
-        console.log(this.responseLog(response));
+        console.log(responseLog(response));
         console.log("\n\n");
         return { messages: [response] };
     }
