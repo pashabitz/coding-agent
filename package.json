@@ -1,0 +1,13 @@
+{
+	"dependencies": {
+		"@langchain/core": "^0.3.57",
+		"@langchain/langgraph": "^0.2.74",
+		"@langchain/openai": "^0.5.11",
+		"commander": "^14.0.0",
+		"dotenv": "^16.5.0",
+		"zod": "^3.25.42"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.29"
+	}
+}

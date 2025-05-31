@@ -1,0 +1,146 @@
+import { StructuredTool, Tool } from "@langchain/core/tools";
+import { StateGraph, END, MessagesAnnotation, Messages, START, CompiledStateGraph } from "@langchain/langgraph";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { UserCode } from "./user_code";
+import { ChatOpenAI } from "@langchain/openai";
+import { AIMessage, BaseMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
+import { StructuredToolParams, tool } from "@langchain/core/tools";
+import { z } from "zod"; 
+import dotenv from "dotenv";
+
+class ListFilesTool extends Tool {
+    private userCode: UserCode;
+    constructor(userCode: UserCode) {
+        super();
+        this.userCode = userCode;
+    }
+    name = "list_files";
+    description = "Lists files in a specified directory. Input should be a directory path.";
+
+    protected async _call(input: string): Promise<string> {
+        try {
+            const files = this.userCode.listFiles(input);
+            return `Files in ${input}: ${files.join(", ")}`;
+        } catch (error: any) {
+            return `Error listing files: ${error.message}`;
+        }
+    }
+}
+
+class ReadFileTool extends Tool {
+    private userCode: UserCode;
+    constructor(userCode: UserCode) {
+        super();
+        this.userCode = userCode;
+    }
+    name = "read_file";
+    description = "Reads the content of a specified file. Input should be a file path relative to the user code directory.";
+    protected async _call(input: string): Promise<string> {
+        try {
+            const content = this.userCode.readFile(input);
+            return `Content of ${input}:\n${content}`;
+        } catch (error: any) {
+            return `Error reading file: ${error.message}`;
+        }
+    }
+}
+
+
+
+class WriteFileTool extends StructuredTool {
+    private userCode: UserCode;
+
+    constructor(userCode: UserCode) {
+        super();
+        this.userCode = userCode;
+    }
+    name = "write_file";
+    description = "Writes content to a specified file. Input should be a JSON string with 'filePath' and 'content' fields.";
+    schema = z.object({
+        filePath: z.string().describe("The path of the file to write to, relative to the user code directory."),
+        content: z.string().describe("The content to write to the file.")
+    });
+    protected async _call(input: { filePath: string; content: string }): Promise<string> {
+        try {
+            const { filePath, content } = input;
+            this.userCode.modifyFile(filePath, content);
+            return `Successfully wrote to ${filePath}`;
+        } catch (error: any) {
+            return `Error writing file: ${error.message}`;
+        }
+    }
+}
+
+export class CodingAgent {
+    private userCode: UserCode;
+    private tools: (Tool | StructuredTool)[];
+    model: any;
+    toolNode: ToolNode<any>;
+    graph: any;
+
+    constructor(repoName: string) {
+        dotenv.config();
+        this.userCode = new UserCode(repoName);
+        this.tools = [
+            new ListFilesTool(this.userCode), 
+            new ReadFileTool(this.userCode),
+            new WriteFileTool(this.userCode),
+        ];
+        this.toolNode = new ToolNode(this.tools);
+        this.model = new ChatOpenAI({
+            model: "gpt-4o-mini",
+        }).bindTools(this.tools);
+        this.graph = this.setupStateGraph();
+    }
+    private responseLog(response: AIMessage): string {
+        if (response.tool_calls && response.tool_calls.length > 0) {
+            return `Tool calls made by the model: ${JSON.stringify(response.tool_calls)}`;
+        }
+        if (response.content) {
+            return response.content.toString();
+        } else {
+            return "Model response does not contain content.";
+        }
+    }
+    private messageLog(message: BaseMessage): string {
+        if (message instanceof HumanMessage) {
+            return `User message: ${message.content}`;
+        }
+        if (message instanceof ToolMessage) {
+            return `Tool ${message.name} message: ${message.content}`;
+        }
+        return `Unknown message type: ${message.content.toString()}`;
+    }
+    private async callModel(state: typeof MessagesAnnotation.State) {
+        console.log(this.messageLog(state.messages[state.messages.length - 1]));
+        const response = await this.model.invoke(state.messages);
+        console.log(this.responseLog(response));
+        console.log("\n\n");
+        return { messages: [response] };
+    }
+    private shouldContinue({ messages }: typeof MessagesAnnotation.State) {
+        const lastMessage = messages[messages.length - 1] as AIMessage;
+
+        // If the LLM makes a tool call, then we route to the "tools" node
+        if (lastMessage.tool_calls?.length) {
+            return "tools";
+        }
+        // Otherwise, we stop (reply to the user) - go to the END node
+        return END;
+    }
+    private setupStateGraph() {
+        const graph = new StateGraph(MessagesAnnotation)
+            .addNode("agent", this.callModel.bind(this))
+            .addEdge(START, "agent")
+            .addNode("tools", this.toolNode)
+            .addEdge("tools", "agent")
+            .addConditionalEdges("agent", this.shouldContinue.bind(this));
+        return graph.compile();
+    }
+    async runAgent(input: string): Promise<Messages> {
+        const response = await this.graph.invoke({
+            messages: [new HumanMessage(input)],
+        });
+        return response;
+    }
+}

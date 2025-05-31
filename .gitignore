@@ -1,0 +1,5 @@
+# anything under user_code
+user_code/*
+# anything under node_modules
+node_modules/*
+.env
