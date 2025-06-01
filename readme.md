@@ -32,8 +32,13 @@ This is enough to have a very simple but useful agent that can make changes to a
 This means creating a branch and then making the PR.
 
 # Step 3: exercise the code it writes to make sure it works
+We need to figure out how to exercise the code. This means finding tests and executing them.
 
 # Step 3.5: remember certain things like making a git branch, making a PR, etc. without having to be told every time
+
+# Step 3.9: side quest - sometimes there are errors
+E.g. error creating a branch (because same name already exists) or creating PR.
+Should do something about it, at least let the user know.
 
 # Step 4: have better understanding of the code it is working with
 

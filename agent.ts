@@ -92,30 +92,64 @@ class MakeGithubBranchTool extends Tool {
     }
 }
 
-class CommitAndMakePrTool extends StructuredTool {
+class CommitChangesTool extends Tool {
     private userCode: UserCode;
     constructor(userCode: UserCode) {
         super();
         this.userCode = userCode;
     }
-    name = "commit_and_make_pr";
-    description = "Commits changes, pushes to remote and creates a PR. Input should be a commit message, the name of the remote branch and the PR title.";
+    name = "commit_changes";
+    description = "Commits changes in the repository. Input should be a commit message.";
+    protected async _call(input: string): Promise<string> {
+        try {
+            this.userCode.executeCommandInRepo(`git add .`);
+            this.userCode.executeCommandInRepo(`git commit -m "${input}"`);
+            return `Successfully committed changes with message: "${input}"`;
+        } catch (error: any) {
+            return `Error committing changes: ${error.message}`;
+        }
+    }
+}
+
+class PushAndMakePrTool extends StructuredTool {
+    private userCode: UserCode;
+    constructor(userCode: UserCode) {
+        super();
+        this.userCode = userCode;
+    }
+    name = "push_and_make_pr";
+    description = "Pushes branch to remote and creates a PR. Input should be the name of the remote branch and the PR title.";
     schema = z.object({
-        commitMessage: z.string().describe("The commit message for the changes."),
         remoteBranch: z.string().describe("The name of the remote branch to push to."),
         prTitle: z.string().describe("The title of the pull request.")
     });
-    protected async _call(input: { commitMessage: string; remoteBranch: string; prTitle: string }): Promise<string> {
+    protected async _call(input: { remoteBranch: string; prTitle: string }): Promise<string> {
         const assumedMainBranch = "main"; // should be configurable or detected
         try {
-            this.userCode.executeCommandInRepo(`git add .`);
-            this.userCode.executeCommandInRepo(`git commit -m "${input.commitMessage}"`);
             this.userCode.executeCommandInRepo(`git push origin ${input.remoteBranch}`);
             this.userCode.executeCommandInRepo(`gh pr create --title "${input.prTitle}" --body "${input.prTitle}" --base ${assumedMainBranch} --head ${input.remoteBranch}`);
             this.userCode.executeCommandInRepo(`git checkout ${assumedMainBranch}`);
-            return `Successfully committed and pushed changes with message: "${input.commitMessage}" to branch: ${input.remoteBranch} and created PR: ${input.prTitle}`;
+            return `Successfully pushed changes to branch: ${input.remoteBranch} and created PR: ${input.prTitle}`;
         } catch (error: any) {
-            return `Error committing and pushing changes: ${error.message}`;
+            return `Error pushing changes and creating PR: ${error.message}`;
+        }
+    }
+}
+
+class RunTestsTool extends Tool {
+    private userCode: UserCode;
+    constructor(userCode: UserCode) {
+        super();
+        this.userCode = userCode;
+    }
+    name = "run_tests";
+    description = "Runs tests in the user code repository. Input should be the command to run tests.";
+    protected async _call(input: string): Promise<string> {
+        try {
+            const result = this.userCode.executeCommandInRepo(input);
+            return `Test results:\n${result}`;
+        } catch (error: any) {
+            return `Error running tests: ${error.message}`;
         }
     }
 }
@@ -135,7 +169,9 @@ export class CodingAgent {
             new ReadFileTool(this.userCode),
             new WriteFileTool(this.userCode),
             new MakeGithubBranchTool(this.userCode),
-            new CommitAndMakePrTool(this.userCode)
+            new CommitChangesTool(this.userCode),
+            new PushAndMakePrTool(this.userCode),
+            new RunTestsTool(this.userCode)
         ];
         this.toolNode = new ToolNode(this.tools);
         this.model = new ChatOpenAI({
