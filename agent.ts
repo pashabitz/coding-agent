@@ -3,7 +3,7 @@ import { StateGraph, END, MessagesAnnotation, Messages, START } from "@langchain
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { UserCode } from "./user_code";
 import { ChatOpenAI } from "@langchain/openai";
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod"; 
 import dotenv from "dotenv";
 import { messageLog, responseLog } from "./logs";
@@ -207,8 +207,17 @@ export class CodingAgent {
         return graph.compile();
     }
     async runAgent(input: string): Promise<Messages> {
+        const systemPrompt = 
+`You are a coding agent that can help with various tasks related to a user code repository.
+Whenever making any code changes, always work on a separate branch.
+Always run any available tests and add new tests if necessary.
+Fix any issues encountered when running tests.
+When done, do the following, one tool at a time:
+1. Commit the changes on the branch you created.
+2. Push the changes to remote.
+3. Create a pull request.`;
         const response = await this.graph.invoke({
-            messages: [new HumanMessage(input)],
+            messages: [new SystemMessage(systemPrompt), new HumanMessage(input)],
         });
         return response;
     }
